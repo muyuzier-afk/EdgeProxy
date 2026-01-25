@@ -1,6 +1,6 @@
 {
+  "name": "edge-proxy",
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "framework": "nextjs",
-  "regions": ["hkg1", "sin1", "nrt1"]
+  "framework": "nextjs"
 }

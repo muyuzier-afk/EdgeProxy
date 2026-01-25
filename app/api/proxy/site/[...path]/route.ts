@@ -30,7 +30,7 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
   const searchParams = request.nextUrl.searchParams;
   const urlParam = searchParams.get('url');
   
-  let targetUrl: string;
+  let targetUrl: string | undefined;
 
   if (urlParam) {
     targetUrl = urlParam;
