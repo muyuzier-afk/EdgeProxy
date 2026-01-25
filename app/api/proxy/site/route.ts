@@ -74,17 +74,30 @@ async function handleProxy(request: NextRequest) {
       }
     }
 
+    console.log('[Proxy] Target URL:', targetUrl);
+    console.log('[Proxy] Request method:', request.method);
+    console.log('[Proxy] Request headers:', Object.fromEntries(headers.entries()));
+
     const proxyRequest = new Request(url, {
       method: request.method,
       headers,
       body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
-      redirect: 'follow',
+      redirect: 'manual',
     });
 
-    const response = await fetch(proxyRequest);
+    let response;
+    try {
+      response = await fetch(proxyRequest);
+      console.log('[Proxy] Response status:', response.status);
+      console.log('[Proxy] Response headers:', Object.fromEntries(response.headers.entries()));
+    } catch (err) {
+      console.error('[Proxy] Fetch error:', err);
+      return NextResponse.json(
+        { error: '代理请求失败', details: err instanceof Error ? err.message : '未知错误' },
+        { status: 500 }
+      );
+    }
 
-    const contentType = response.headers.get('content-type') || '';
-    
     const responseHeaders = new Headers();
     
     for (const [key, value] of response.headers.entries()) {
@@ -105,12 +118,34 @@ async function handleProxy(request: NextRequest) {
     responseHeaders.set('Access-Control-Allow-Headers', '*');
     responseHeaders.set('X-Proxy-Base', baseUrl);
 
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) {
+        const absoluteLocation = resolveUrl(location, baseUrl);
+        const proxyLocation = `/api/proxy/site/${absoluteLocation.replace(/^https?:\/\//, '')}`;
+        console.log('[Proxy] Redirect location:', location, '->', proxyLocation);
+        
+        responseHeaders.set('location', proxyLocation);
+        return new NextResponse(null, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+        });
+      }
+    }
+
+    if (response.status === 400) {
+      const errorText = await response.text();
+      console.error('[Proxy] 400 Bad Request Response:', errorText);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+
     let body = response.body;
 
     if (contentType.includes('text/html')) {
       const text = await response.text();
       const rewrittenHtml = rewriteHtml(text, baseUrl);
-      responseHeaders.set('Content-Length', new Blob([rewrittenHtml]).size.toString());
       return new NextResponse(rewrittenHtml, {
         status: response.status,
         statusText: response.statusText,
@@ -119,7 +154,6 @@ async function handleProxy(request: NextRequest) {
     } else if (contentType.includes('text/css')) {
       const text = await response.text();
       const rewrittenCss = rewriteCss(text, baseUrl);
-      responseHeaders.set('Content-Length', new Blob([rewrittenCss]).size.toString());
       return new NextResponse(rewrittenCss, {
         status: response.status,
         statusText: response.statusText,
@@ -128,7 +162,6 @@ async function handleProxy(request: NextRequest) {
     } else if (contentType.includes('application/javascript') || contentType.includes('text/javascript')) {
       const text = await response.text();
       const rewrittenJs = rewriteJs(text, baseUrl);
-      responseHeaders.set('Content-Length', new Blob([rewrittenJs]).size.toString());
       return new NextResponse(rewrittenJs, {
         status: response.status,
         statusText: response.statusText,

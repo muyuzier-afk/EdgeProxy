@@ -63,22 +63,27 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
     const headers = new Headers();
     
     for (const [key, value] of request.headers.entries()) {
-      if (key.toLowerCase() !== 'host') {
+      if (key.toLowerCase() !== 'host' && key.toLowerCase() !== 'connection') {
         headers.set(key, value);
       }
     }
+
+    console.log('[Proxy] Target URL:', targetUrl);
+    console.log('[Proxy] Request method:', request.method);
+    console.log('[Proxy] Request headers:', Object.fromEntries(headers.entries()));
 
     const proxyRequest = new Request(url, {
       method: request.method,
       headers,
       body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
-      redirect: 'follow',
+      redirect: 'manual',
     });
 
     const response = await fetch(proxyRequest);
 
-    const contentType = response.headers.get('content-type') || '';
-    
+    console.log('[Proxy] Response status:', response.status);
+    console.log('[Proxy] Response headers:', Object.fromEntries(response.headers.entries()));
+
     const responseHeaders = new Headers();
     
     for (const [key, value] of response.headers.entries()) {
@@ -98,6 +103,29 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
     responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     responseHeaders.set('Access-Control-Allow-Headers', '*');
     responseHeaders.set('X-Proxy-Base', baseUrl);
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) {
+        const absoluteLocation = resolveUrl(location, baseUrl);
+        const proxyLocation = `/api/proxy/site/${absoluteLocation.replace(/^https?:\/\//, '')}`;
+        console.log('[Proxy] Redirect location:', location, '->', proxyLocation);
+        
+        responseHeaders.set('location', proxyLocation);
+        return new NextResponse(null, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+        });
+      }
+    }
+
+    if (response.status === 400) {
+      const errorText = await response.text();
+      console.error('[Proxy] 400 Bad Request Response:', errorText);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
 
     let body = response.body;
 
