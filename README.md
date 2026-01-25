@@ -1,20 +1,20 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vercel/vercel/main/packages/ui/public/logo.svg" alt="Edge Proxy Logo" width="120" height="120">
+  <img src="https://raw.githubusercontent.com/muyuzier-afk/EdgeProxy/main/public/vsp.png" alt="Edge Proxy Logo" width="120" height="120">
 </p>
 
 <h1 align="center">Edge Proxy</h1>
 
 <p align="center">
-  <a href="https://github.com/your-username/edge-proxy/stargazers">
-    <img src="https://img.shields.io/github/stars/your-username/edge-proxy?style=social" alt="GitHub stars">
+  <a href="https://github.com/muyuzier-afk/EdgeProxy/stargazers">
+    <img src="https://img.shields.io/github/stars/muyuzier-afk/EdgeProxy?style=social" alt="GitHub stars">
   </a>
-  <a href="https://github.com/your-username/edge-proxy/network/members">
-    <img src="https://img.shields.io/github/forks/your-username/edge-proxy?style=social" alt="GitHub forks">
+  <a href="https://github.com/muyuzier-afk/EdgeProxy/network/members">
+    <img src="https://img.shields.io/github/forks/muyuzier-afk/EdgeProxy?style=social" alt="GitHub forks">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-username/edge-proxy">
+  <a href="https://github.com/muyuzier-afk/EdgeProxy">
     <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
   </a>
   <a href="LICENSE">
@@ -47,8 +47,8 @@ Edge Proxy 是一个轻量级、高性能的网站反向代理工具，利用 Ed
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-username/edge-proxy.git
-cd edge-proxy
+git clone https://github.com/muyuzier-afk/EdgeProxy.git
+cd EdgeProxy
 
 # 安装依赖
 npm install
@@ -104,7 +104,7 @@ vercel
 
 ### 方法三：一键部署
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/your-username/vercel-site-proxy)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/muyuzier-afk/EdgeProxy)
 
 点击上面的按钮，按照提示操作即可快速部署。
 
