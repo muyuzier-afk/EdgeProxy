@@ -1,0 +1,277 @@
+import { NextRequest, NextResponse } from 'next/server';
+
+export const runtime = 'edge';
+
+export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+export async function POST(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+export async function PUT(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+export async function PATCH(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+export async function OPTIONS(request: NextRequest, { params }: { params: { path: string[] } }) {
+  return handleProxy(request, params.path);
+}
+
+async function handleProxy(request: NextRequest, pathSegments: string[]) {
+  const searchParams = request.nextUrl.searchParams;
+  const urlParam = searchParams.get('url');
+  
+  let targetUrl: string;
+
+  if (urlParam) {
+    targetUrl = urlParam;
+  } else if (pathSegments.length > 0) {
+    const fullPath = pathSegments.join('/');
+    
+    if (fullPath.startsWith('http://') || fullPath.startsWith('https://')) {
+      targetUrl = fullPath;
+    } else if (fullPath.includes('/')) {
+      const parts = fullPath.split('/');
+      const host = parts[0];
+      const path = parts.slice(1).join('/');
+      targetUrl = `https://${host}${path ? '/' + path : ''}`;
+    } else {
+      targetUrl = `https://${fullPath}`;
+    }
+  }
+
+  if (!targetUrl) {
+    return NextResponse.json(
+      { error: '缺少目标 URL 参数，请使用 ?url=目标网址 或 /api/proxy/site/目标网站/路径' },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const url = new URL(targetUrl);
+    const baseUrl = `${url.protocol}//${url.host}`;
+    
+    const headers = new Headers();
+    
+    for (const [key, value] of request.headers.entries()) {
+      if (key.toLowerCase() !== 'host') {
+        headers.set(key, value);
+      }
+    }
+
+    const proxyRequest = new Request(url, {
+      method: request.method,
+      headers,
+      body: request.method !== 'GET' && request.method !== 'HEAD' ? request.body : undefined,
+      redirect: 'follow',
+    });
+
+    const response = await fetch(proxyRequest);
+
+    const contentType = response.headers.get('content-type') || '';
+    
+    const responseHeaders = new Headers();
+    
+    for (const [key, value] of response.headers.entries()) {
+      if (
+        key.toLowerCase() !== 'transfer-encoding' &&
+        key.toLowerCase() !== 'connection' &&
+        key.toLowerCase() !== 'keep-alive' &&
+        key.toLowerCase() !== 'access-control-expose-headers' &&
+        key.toLowerCase() !== 'content-security-policy' &&
+        key.toLowerCase() !== 'content-length'
+      ) {
+        responseHeaders.set(key, value);
+      }
+    }
+
+    responseHeaders.set('Access-Control-Allow-Origin', '*');
+    responseHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    responseHeaders.set('Access-Control-Allow-Headers', '*');
+    responseHeaders.set('X-Proxy-Base', baseUrl);
+
+    let body = response.body;
+
+    if (contentType.includes('text/html')) {
+      const text = await response.text();
+      const rewrittenHtml = rewriteHtml(text, baseUrl);
+      responseHeaders.set('Content-Length', new Blob([rewrittenHtml]).size.toString());
+      return new NextResponse(rewrittenHtml, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    } else if (contentType.includes('text/css')) {
+      const text = await response.text();
+      const rewrittenCss = rewriteCss(text, baseUrl);
+      responseHeaders.set('Content-Length', new Blob([rewrittenCss]).size.toString());
+      return new NextResponse(rewrittenCss, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    } else if (contentType.includes('application/javascript') || contentType.includes('text/javascript')) {
+      const text = await response.text();
+      const rewrittenJs = rewriteJs(text, baseUrl);
+      responseHeaders.set('Content-Length', new Blob([rewrittenJs]).size.toString());
+      return new NextResponse(rewrittenJs, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+      });
+    }
+
+    return new NextResponse(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    console.error('代理请求失败:', error);
+    return NextResponse.json(
+      { error: '代理请求失败', details: error instanceof Error ? error.message : '未知错误' },
+      { status: 500 }
+    );
+  }
+}
+
+function rewriteHtml(html: string, baseUrl: string): string {
+  let result = html;
+
+  result = result.replace(/<base\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*>/gi, (match, href) => {
+    const absoluteUrl = resolveUrl(href, baseUrl);
+    return match.replace(href, absoluteUrl);
+  });
+
+  result = result.replace(/<a\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'href', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<img\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<script\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<link\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'href', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<iframe\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<embed\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<source\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<track\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'src', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<video\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'poster', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<object\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'data', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/<form\s+[\s\S]*?>/gi, (match) => {
+    const newAttrs = rewriteAttribute(match, 'action', baseUrl);
+    return newAttrs;
+  });
+
+  result = result.replace(/url\(\s*["']?([^"')\s]+)["']?\s*\)/gi, (match, url) => {
+    if (url.startsWith('data:') || url.startsWith('#')) return match;
+    const absoluteUrl = resolveUrl(url, baseUrl);
+    const proxyUrl = `/api/proxy/site/${absoluteUrl.replace(/^https?:\/\//, '')}`;
+    return `url("${proxyUrl}")`;
+  });
+
+  return result;
+}
+
+function rewriteAttribute(tag: string, attrName: string, baseUrl: string): string {
+  const regex = new RegExp(`(${attrName}\\s*=\\s*["'])([^"']*)(["'])`, 'gi');
+  return tag.replace(regex, (match, prefix, value, suffix) => {
+    if (value.startsWith('data:') || value.startsWith('#') || value.startsWith('mailto:') || value.startsWith('tel:') || value.startsWith('javascript:')) {
+      return match;
+    }
+    const absoluteUrl = resolveUrl(value, baseUrl);
+    const proxyUrl = `/api/proxy/site/${absoluteUrl.replace(/^https?:\/\//, '')}`;
+    return `${prefix}${proxyUrl}${suffix}`;
+  });
+}
+
+function rewriteCss(css: string, baseUrl: string): string {
+  return css.replace(/url\(\s*["']?([^"')\s]+)["']?\s*\)/gi, (match, url) => {
+    if (url.startsWith('data:') || url.startsWith('#')) return match;
+    const absoluteUrl = resolveUrl(url, baseUrl);
+    const proxyUrl = `/api/proxy/site/${absoluteUrl.replace(/^https?:\/\//, '')}`;
+    return `url("${proxyUrl}")`;
+  });
+}
+
+function rewriteJs(js: string, baseUrl: string): string {
+  let result = js;
+
+  result = result.replace(/(["'])((?:https?:)?\/\/[^"']+\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|woff2?|ttf|eot))\1/gi, (match, quote, url) => {
+    const absoluteUrl = resolveUrl(url, baseUrl);
+    const proxyUrl = `/api/proxy/site/${absoluteUrl.replace(/^https?:\/\//, '')}`;
+    return `"${proxyUrl}"`;
+  });
+
+  return result;
+}
+
+function resolveUrl(url: string, baseUrl: string): string {
+  if (!url) return baseUrl;
+  
+  if (url.startsWith('data:') || url.startsWith('#') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('javascript:')) {
+    return url;
+  }
+  
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  if (url.startsWith('//')) {
+    return `https:${url}`;
+  }
+  
+  if (url.startsWith('/')) {
+    const base = new URL(baseUrl);
+    return `${base.protocol}//${base.host}${url}`;
+  }
+  
+  const base = new URL(baseUrl);
+  const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/'));
+  const resolved = new URL(url, `${base.protocol}//${base.host}${basePath}/`);
+  return resolved.href;
+}
