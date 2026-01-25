@@ -79,10 +79,18 @@ async function handleProxy(request: NextRequest, pathSegments: string[]) {
       redirect: 'manual',
     });
 
-    const response = await fetch(proxyRequest);
-
-    console.log('[Proxy] Response status:', response.status);
-    console.log('[Proxy] Response headers:', Object.fromEntries(response.headers.entries()));
+    let response;
+    try {
+      response = await fetch(proxyRequest);
+      console.log('[Proxy] Response status:', response.status);
+      console.log('[Proxy] Response headers:', Object.fromEntries(response.headers.entries()));
+    } catch (err) {
+      console.error('[Proxy] Fetch error:', err);
+      return NextResponse.json(
+        { error: '代理请求失败', details: err instanceof Error ? err.message : '未知错误' },
+        { status: 500 }
+      );
+    }
 
     const responseHeaders = new Headers();
     
