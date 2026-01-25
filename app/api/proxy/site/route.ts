@@ -69,7 +69,7 @@ async function handleProxy(request: NextRequest) {
     const headers = new Headers();
     
     for (const [key, value] of request.headers.entries()) {
-      if (key.toLowerCase() !== 'host') {
+      if (key.toLowerCase() !== 'host' && key.toLowerCase() !== 'connection') {
         headers.set(key, value);
       }
     }
